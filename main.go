@@ -23,7 +23,7 @@ type Template struct {
 const defaultTemplateContent = `content: |
   # {{TITLE}}
 
-  Date: {{DATE}}
+  Date: {{DATE}}  
   Time: {{TIME}}
 
   ## Introduction
