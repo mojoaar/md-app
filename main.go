@@ -24,6 +24,7 @@ const defaultTemplateContent = `content: |
   # {{TITLE}}
 
   Date: {{DATE}}
+  Time: {{TIME}}
 
   ## Introduction
 
@@ -204,8 +205,10 @@ func loadTemplate(templateName string) (string, error) {
 }
 
 func generateContent(template, title string) string {
+	now := time.Now()
 	content := strings.ReplaceAll(template, "{{TITLE}}", title)
-	content = strings.ReplaceAll(content, "{{DATE}}", time.Now().Format("2006-01-02"))
+	content = strings.ReplaceAll(content, "{{DATE}}", now.Format("2006-01-02"))
+	content = strings.ReplaceAll(content, "{{TIME}}", now.Format("15:04:05"))
 	return content
 }
 
