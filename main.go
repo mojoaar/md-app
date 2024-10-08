@@ -11,6 +11,11 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const (
+	version = "1.0.0"
+	author  = "Morten Johansen (mojoaar)"
+)
+
 type Template struct {
 	Content string `yaml:"content"`
 }
@@ -29,27 +34,46 @@ const defaultTemplateContent = `content: |
 
 func main() {
 	// Define command-line flags
-	operationType := flag.String("type", "", "Operation type: 'template' or 'post'")
+	helpFlag := flag.Bool("help", false, "Show help information")
+	versionFlag := flag.Bool("version", false, "Show version information")
+	operationType := flag.String("type", "", "Operation type: 'template' or 'note'")
 	name := flag.String("name", "", "Name of the markdown file or template (without extension)")
-	title := flag.String("title", "", "Title of the markdown document (only for posts)")
-	templateFile := flag.String("template", "default", "Name of the template file (without extension, only for posts)")
+	title := flag.String("title", "", "Title of the markdown document (only for notes)")
+	templateFile := flag.String("template", "default", "Name of the template file (without extension, only for notes)")
+	showTemplates := flag.Bool("show", false, "Show all available template files (only for template type)")
+
+	// Custom usage message
+	flag.Usage = func() {
+		fmt.Printf("Markdown File Creator v%s\n", version)
+		fmt.Printf("Author: %s\n\n", author)
+		fmt.Println("Usage:")
+		fmt.Println("  Create a new template:")
+		fmt.Println("    go run main.go -type template -name <template_name>")
+		fmt.Println("  Show all available templates:")
+		fmt.Println("    go run main.go -type template -show")
+		fmt.Println("  Create a new note:")
+		fmt.Println("    go run main.go -type note -name <note_name> -title <note_title> [-template <template_name>]")
+		fmt.Println("\nFlags:")
+		flag.PrintDefaults()
+	}
+
 	flag.Parse()
 
+	// Handle help and version flags
+	if *helpFlag {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	if *versionFlag {
+		fmt.Printf("Markdown File Creator v%s\n", version)
+		fmt.Printf("Author: %s\n", author)
+		os.Exit(0)
+	}
+
 	// Validate input
-	if *operationType != "template" && *operationType != "post" {
-		fmt.Println("Error: type must be either 'template' or 'post'")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if *name == "" {
-		fmt.Println("Error: name is required")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if *operationType == "post" && *title == "" {
-		fmt.Println("Error: title is required for posts")
+	if *operationType != "template" && *operationType != "note" {
+		fmt.Println("Error: type must be either 'template' or 'note'")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -62,9 +86,22 @@ func main() {
 	}
 
 	if *operationType == "template" {
-		err = createTemplate(*name)
+		if *showTemplates {
+			err = showTemplateFiles()
+		} else if *name != "" {
+			err = createTemplate(*name)
+		} else {
+			fmt.Println("Error: for template type, either -show or -name must be specified")
+			flag.Usage()
+			os.Exit(1)
+		}
 	} else {
-		err = createPost(*name, *title, *templateFile)
+		if *name == "" || *title == "" {
+			fmt.Println("Error: name and title are required for notes")
+			flag.Usage()
+			os.Exit(1)
+		}
+		err = createNote(*name, *title, *templateFile)
 	}
 
 	if err != nil {
@@ -97,6 +134,23 @@ func ensureTemplatesDirectory() error {
 	return nil
 }
 
+func showTemplateFiles() error {
+	templatesDir := "templates"
+	files, err := os.ReadDir(templatesDir)
+	if err != nil {
+		return fmt.Errorf("failed to read templates directory: %v", err)
+	}
+
+	fmt.Println("Available template files:")
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yaml") {
+			fmt.Println("-", strings.TrimSuffix(file.Name(), ".yaml"))
+		}
+	}
+
+	return nil
+}
+
 func createTemplate(name string) error {
 	filename := filepath.Join("templates", name+".yaml")
 	err := os.WriteFile(filename, []byte(defaultTemplateContent), 0644)
@@ -108,7 +162,7 @@ func createTemplate(name string) error {
 	return nil
 }
 
-func createPost(name, title, templateFile string) error {
+func createNote(name, title, templateFile string) error {
 	// Load template
 	template, err := loadTemplate(templateFile)
 	if err != nil {
@@ -124,7 +178,7 @@ func createPost(name, title, templateFile string) error {
 		return fmt.Errorf("error saving markdown file: %v", err)
 	}
 
-	fmt.Printf("Markdown file '%s.md' created successfully.\n", name)
+	fmt.Printf("Markdown note '%s.md' created successfully.\n", name)
 	return nil
 }
 
