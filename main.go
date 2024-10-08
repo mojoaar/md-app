@@ -37,8 +37,8 @@ func main() {
 	helpFlag := flag.Bool("help", false, "Show help information")
 	versionFlag := flag.Bool("version", false, "Show version information")
 	operationType := flag.String("type", "", "Operation type: 'template' or 'note'")
-	name := flag.String("name", "", "Name of the markdown file or template (without extension)")
-	title := flag.String("title", "", "Title of the markdown document (only for notes)")
+	name := flag.String("name", "", "Name of the markdown file or template (without extension, optional for notes)")
+	title := flag.String("title", "", "Title of the markdown document (required for notes)")
 	templateFile := flag.String("template", "default", "Name of the template file (without extension, only for notes)")
 	showTemplates := flag.Bool("show", false, "Show all available template files (only for template type)")
 
@@ -48,11 +48,11 @@ func main() {
 		fmt.Printf("Author: %s\n\n", author)
 		fmt.Println("Usage:")
 		fmt.Println("  Create a new template:")
-		fmt.Println("    go run main.go -type template -name <template_name>")
+		fmt.Println("    md -type template -name <template_name>")
 		fmt.Println("  Show all available templates:")
-		fmt.Println("    go run main.go -type template -show")
+		fmt.Println("    md -type template -show")
 		fmt.Println("  Create a new note:")
-		fmt.Println("    go run main.go -type note -name <note_name> -title <note_title> [-template <template_name>]")
+		fmt.Println("    md -type note -title <note_title> [-name <note_name>] [-template <template_name>]")
 		fmt.Println("\nFlags:")
 		flag.PrintDefaults()
 	}
@@ -89,19 +89,24 @@ func main() {
 		if *showTemplates {
 			err = showTemplateFiles()
 		} else if *name != "" {
-			err = createTemplate(*name)
+			err = createTemplate(strings.ToLower(*name))
 		} else {
 			fmt.Println("Error: for template type, either -show or -name must be specified")
 			flag.Usage()
 			os.Exit(1)
 		}
 	} else {
-		if *name == "" || *title == "" {
-			fmt.Println("Error: name and title are required for notes")
+		if *title == "" {
+			fmt.Println("Error: title is required for notes")
 			flag.Usage()
 			os.Exit(1)
 		}
-		err = createNote(*name, *title, *templateFile)
+		noteName := *name
+		if noteName == "" {
+			noteName = *title
+		}
+		noteName = strings.ToLower(strings.ReplaceAll(noteName, " ", "-"))
+		err = createNote(noteName, *title, *templateFile)
 	}
 
 	if err != nil {
