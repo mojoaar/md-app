@@ -90,7 +90,9 @@ func main() {
 		if *showTemplates {
 			err = showTemplateFiles()
 		} else if *name != "" {
-			err = createTemplate(strings.ToLower(*name))
+			// Convert spaces to dashes and make lowercase
+			templateName := strings.ToLower(strings.ReplaceAll(*name, " ", "-"))
+			err = createTemplate(templateName)
 		} else {
 			fmt.Println("Error: for template type, either -show or -name must be specified")
 			flag.Usage()
