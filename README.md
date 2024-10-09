@@ -12,12 +12,22 @@ File creator is a command-line utility for creating new markdown files from temp
 
 ## Usage
 
+*General*
+```
+Create a new template:
+  md -type template -name <template_name>
+Show all available templates:
+  md -type template -show
+Create a new note:
+  md -type note -title <note_title> [-name <note_name>] [-template <template_name>]
+```
+
 *Create a new template*
 ```
 md -type template -name default
 ```
 
-*Show all available templates*
+*Show all available templates (will also create default.yaml if it is not in the templates directory)*
 ```
 md -type template -show
 ```
@@ -30,11 +40,11 @@ Available template files:
 
 *Create a new note*
 ```
-md -type note -name my-first-note -title "My First Note" -template default
+md -type note -title "My First Note" -template default
 ```
 
-*General*  
-Use *md -version* and *md -help* to get version and help information.
+*Version & help information*  
+Use *md -v* and *md -h* to get version and help information.
 
 ## Changelog
 * 1.0.0 - 2024-10-08
