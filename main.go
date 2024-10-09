@@ -36,6 +36,7 @@ const defaultTemplateContent = `content: |
 func main() {
 	// Define command-line flags
 	helpFlag := flag.Bool("help", false, "Show help information")
+	helpShortFlag := flag.Bool("h", false, "Show help information (short flag)")
 	versionFlag := flag.Bool("version", false, "Show version information")
 	versionShortFlag := flag.Bool("v", false, "Show version information (short flag)")
 	operationType := flag.String("type", "", "Operation type: 'template' or 'note'")
@@ -62,7 +63,7 @@ func main() {
 	flag.Parse()
 
 	// Handle help and version flags
-	if *helpFlag {
+	if *helpFlag || *helpShortFlag {
 		flag.Usage()
 		os.Exit(0)
 	}
