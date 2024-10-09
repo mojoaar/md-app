@@ -44,7 +44,9 @@ md -type note -title "My First Note" -template default
 ```
 
 *Version & help information*  
+```
 Use *md -v* and *md -h* to get version and help information.
+```
 
 ## Changelog
 * 1.0.0 - 2024-10-08
