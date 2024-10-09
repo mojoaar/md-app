@@ -37,6 +37,7 @@ func main() {
 	// Define command-line flags
 	helpFlag := flag.Bool("help", false, "Show help information")
 	versionFlag := flag.Bool("version", false, "Show version information")
+	versionShortFlag := flag.Bool("v", false, "Show version information (short flag)")
 	operationType := flag.String("type", "", "Operation type: 'template' or 'note'")
 	name := flag.String("name", "", "Name of the markdown file or template (without extension, optional for notes)")
 	title := flag.String("title", "", "Title of the markdown document (required for notes)")
@@ -66,7 +67,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *versionFlag {
+	if *versionFlag || *versionShortFlag {
 		fmt.Printf("Markdown File Creator v%s\n", version)
 		fmt.Printf("Author: %s\n", author)
 		os.Exit(0)
