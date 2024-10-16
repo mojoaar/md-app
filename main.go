@@ -172,6 +172,21 @@ func ensureTemplatesDirectory() error {
 	return nil
 }
 
+func ensureNotesDirectory() error {
+	if AppConfig.NotesDir == "" {
+		return nil // No notes directory specified, we'll use the current directory
+	}
+
+	if _, err := os.Stat(AppConfig.NotesDir); os.IsNotExist(err) {
+		err := os.MkdirAll(AppConfig.NotesDir, 0755)
+		if err != nil {
+			return &FileError{Op: "create", Path: AppConfig.NotesDir, Err: err}
+		}
+		fmt.Printf("Created notes directory: %s\n", AppConfig.NotesDir)
+	}
+	return nil
+}
+
 func createTemplate(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	if err := validateFileName(name); err != nil {
@@ -233,6 +248,10 @@ func createNote(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if err := ensureNotesDirectory(); err != nil {
+		return err
+	}
+
 	template, err := loadTemplate(templateName)
 	if err != nil {
 		return err
@@ -279,6 +298,9 @@ func generateContent(template, title string) string {
 
 func saveMarkdownFile(name, content string) error {
 	filename := sanitizeFileName(name) + ".md"
+	if AppConfig.NotesDir != "" {
+		filename = filepath.Join(AppConfig.NotesDir, filename)
+	}
 	err := os.WriteFile(filename, []byte(content), 0644)
 	if err != nil {
 		return &FileError{Op: "write", Path: filename, Err: err}

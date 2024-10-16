@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	TemplatesDir string `yaml:"templates_dir"`
+	NotesDir     string `yaml:"notes_dir,omitempty"`
 }
 
 var AppConfig Config
@@ -44,6 +45,9 @@ func LoadConfig() error {
 	// Override with environment variables
 	if envTemplatesDir := os.Getenv("MD_TEMPLATES_DIR"); envTemplatesDir != "" {
 		AppConfig.TemplatesDir = envTemplatesDir
+	}
+	if envNotesDir := os.Getenv("MD_NOTES_DIR"); envNotesDir != "" {
+		AppConfig.NotesDir = envNotesDir
 	}
 
 	return nil
@@ -81,8 +85,13 @@ func createDefaultConfig() error {
 
 templates_dir: templates
 
-# Note: You can use the environment variable MD_TEMPLATES_DIR to override
-# the templates directory at runtime.
+# notes_dir: Optional directory where notes will be stored
+# If not set, notes will be created in the current directory
+# Example:
+#   notes_dir: /path/to/your/notes
+
+# Note: You can use the environment variables MD_TEMPLATES_DIR and MD_NOTES_DIR
+# to override these settings at runtime.
 `
 
 	err := os.WriteFile(".md_config.yaml", []byte(configContent), 0644)
