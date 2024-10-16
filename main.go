@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 )
 
@@ -54,144 +54,135 @@ func (e *FileError) Error() string {
 	return fmt.Sprintf("%s error for file %s: %v", e.Op, e.Path, e.Err)
 }
 
+var rootCmd = &cobra.Command{
+	Use:     "md",
+	Short:   "Markdown File Creator",
+	Version: version,
+	Long: fmt.Sprintf(`Markdown File Creator v%s
+Author: %s
+
+A tool for creating markdown files and managing templates.
+
+Usage Examples:
+  Create a new template:
+    md template create my-template
+
+  List all templates:
+    md template list
+
+  Create a new note using the default template:
+    md note -t "My Note Title"
+
+  Create a new note with a custom name and template:
+    md note -t "My Note Title" -n my-custom-note -m my-template`, version, author),
+}
+
+var templateCmd = &cobra.Command{
+	Use:   "template",
+	Short: "Manage templates",
+	Long: `Create or list template files for markdown notes.
+
+Usage Examples:
+  Create a new template:
+    md template create my-template
+
+  List all templates:
+    md template list`,
+}
+
+var createTemplateCmd = &cobra.Command{
+	Use:   "create [name]",
+	Short: "Create a new template",
+	Long: `Create a new template file for markdown notes.
+
+Usage Example:
+  md template create my-template`,
+	Args: cobra.ExactArgs(1),
+	RunE: createTemplate,
+}
+
+var listTemplatesCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all available templates",
+	Long: `List all available template files for markdown notes.
+
+Usage Example:
+  md template list`,
+	RunE: listTemplates,
+}
+
+var noteCmd = &cobra.Command{
+	Use:   "note",
+	Short: "Create a new note",
+	Long: `Create a new markdown note using a specified template.
+
+Usage Examples:
+  Create a note with the default template:
+    md note -t "My Note Title"
+
+  Create a note with a custom name and template:
+    md note -t "My Note Title" -n my-custom-note -m my-template`,
+	RunE: createNote,
+}
+
+var (
+	noteTitle    string
+	noteName     string
+	templateName string
+)
+
+func init() {
+	rootCmd.AddCommand(templateCmd, noteCmd)
+	templateCmd.AddCommand(createTemplateCmd, listTemplatesCmd)
+
+	noteCmd.Flags().StringVarP(&noteTitle, "title", "t", "", "Title of the markdown document (required)")
+	noteCmd.Flags().StringVarP(&noteName, "name", "n", "", "Name of the markdown file (optional, defaults to title)")
+	noteCmd.Flags().StringVarP(&templateName, "template", "m", "default", "Name of the template to use")
+	noteCmd.MarkFlagRequired("title")
+}
+
 func main() {
-	// Define command-line flags
-	helpFlag := flag.Bool("help", false, "Show help information")
-	helpShortFlag := flag.Bool("h", false, "Show help information (short flag)")
-	versionFlag := flag.Bool("version", false, "Show version information")
-	versionShortFlag := flag.Bool("v", false, "Show version information (short flag)")
-	operationType := flag.String("type", "", "Operation type: 'template' or 'note'")
-	name := flag.String("name", "", "Name of the markdown file or template (without extension, optional for notes)")
-	title := flag.String("title", "", "Title of the markdown document (required for notes)")
-	templateFile := flag.String("template", "default", "Name of the template file (without extension, only for notes)")
-	showTemplates := flag.Bool("show", false, "Show all available template files (only for template type)")
-
-	// Custom usage message
-	flag.Usage = func() {
-		fmt.Printf("Markdown File Creator v%s\n", version)
-		fmt.Printf("Author: %s\n\n", author)
-		fmt.Println("Usage:")
-		fmt.Println("  Create a new template:")
-		fmt.Println("    md -type template -name <template_name>")
-		fmt.Println("  Show all available templates:")
-		fmt.Println("    md -type template -show")
-		fmt.Println("  Create a new note:")
-		fmt.Println("    md -type note -title <note_title> [-name <note_name>] [-template <template_name>]")
-		fmt.Println("\nFlags:")
-		flag.PrintDefaults()
-	}
-
-	flag.Parse()
-
-	// Handle help and version flags
-	if *helpFlag || *helpShortFlag {
-		flag.Usage()
-		os.Exit(0)
-	}
-
-	if *versionFlag || *versionShortFlag {
-		fmt.Printf("Markdown File Creator v%s\n", version)
-		fmt.Printf("Author: %s\n", author)
-		os.Exit(0)
-	}
-
-	// Validate input
-	if *operationType != "template" && *operationType != "note" {
-		fmt.Println("Error: type must be either 'template' or 'note'")
-		flag.Usage()
+	if err := LoadConfig(); err != nil {
+		fmt.Printf("Error loading configuration: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Ensure templates directory exists and create default template if needed
-	err := ensureTemplatesDirectory()
-	if err != nil {
-		handleError(err)
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
-
-	if *operationType == "template" {
-		if *showTemplates {
-			err = showTemplateFiles()
-		} else if *name != "" {
-			err = createTemplate(*name)
-		} else {
-			fmt.Println("Error: for template type, either -show or -name must be specified")
-			flag.Usage()
-			os.Exit(1)
-		}
-	} else {
-		if *title == "" {
-			fmt.Println("Error: title is required for notes")
-			flag.Usage()
-			os.Exit(1)
-		}
-		noteName := *name
-		if noteName == "" {
-			noteName = *title
-		}
-		err = createNote(noteName, *title, *templateFile)
-	}
-
-	if err != nil {
-		handleError(err)
-	}
-}
-
-func handleError(err error) {
-	switch e := err.(type) {
-	case *ValidationError:
-		fmt.Printf("Validation error: %v\n", e)
-	case *FileError:
-		fmt.Printf("File operation error: %v\n", e)
-	default:
-		fmt.Printf("An error occurred: %v\n", e)
-	}
-	os.Exit(1)
 }
 
 func ensureTemplatesDirectory() error {
-	templatesDir := "templates"
-
-	if _, err := os.Stat(templatesDir); os.IsNotExist(err) {
-		err := os.Mkdir(templatesDir, 0755)
+	if _, err := os.Stat(AppConfig.TemplatesDir); os.IsNotExist(err) {
+		err := os.Mkdir(AppConfig.TemplatesDir, 0755)
 		if err != nil {
-			return &FileError{Op: "create", Path: templatesDir, Err: err}
+			return &FileError{Op: "create", Path: AppConfig.TemplatesDir, Err: err}
 		}
-		fmt.Println("Created templates directory.")
+		fmt.Printf("Created templates directory: %s\n", AppConfig.TemplatesDir)
 
-		defaultFilePath := filepath.Join(templatesDir, "default.yaml")
-		err = os.WriteFile(defaultFilePath, []byte(defaultTemplateContent), 0644)
+		// Create default template
+		defaultTemplatePath := filepath.Join(AppConfig.TemplatesDir, "default.yaml")
+		err = os.WriteFile(defaultTemplatePath, []byte(defaultTemplateContent), 0644)
 		if err != nil {
-			return &FileError{Op: "write", Path: defaultFilePath, Err: err}
+			return &FileError{Op: "write", Path: defaultTemplatePath, Err: err}
 		}
-		fmt.Println("Created default template file.")
+		fmt.Println("Created default template file: default.yaml")
 	}
-
 	return nil
 }
 
-func showTemplateFiles() error {
-	templatesDir := "templates"
-	files, err := os.ReadDir(templatesDir)
-	if err != nil {
-		return &FileError{Op: "read", Path: templatesDir, Err: err}
-	}
-
-	fmt.Println("Available template files:")
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yaml") {
-			fmt.Println("-", strings.TrimSuffix(file.Name(), ".yaml"))
-		}
-	}
-
-	return nil
-}
-
-func createTemplate(name string) error {
+func createTemplate(cmd *cobra.Command, args []string) error {
+	name := args[0]
 	if err := validateFileName(name); err != nil {
 		return err
 	}
 
-	filename := filepath.Join("templates", sanitizeFileName(name)+".yaml")
+	if err := ensureTemplatesDirectory(); err != nil {
+		return err
+	}
+
+	filename := filepath.Join(AppConfig.TemplatesDir, sanitizeFileName(name)+".yaml")
 	err := os.WriteFile(filename, []byte(defaultTemplateContent), 0644)
 	if err != nil {
 		return &FileError{Op: "write", Path: filename, Err: err}
@@ -201,32 +192,69 @@ func createTemplate(name string) error {
 	return nil
 }
 
-func createNote(name, title, templateFile string) error {
-	if err := validateFileName(name); err != nil {
-		return err
-	}
-	if err := validateTitle(title); err != nil {
+func listTemplates(cmd *cobra.Command, args []string) error {
+	if err := ensureTemplatesDirectory(); err != nil {
 		return err
 	}
 
-	template, err := loadTemplate(templateFile)
+	files, err := os.ReadDir(AppConfig.TemplatesDir)
+	if err != nil {
+		return &FileError{Op: "read", Path: AppConfig.TemplatesDir, Err: err}
+	}
+
+	templateFiles := []string{}
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yaml") {
+			templateFiles = append(templateFiles, strings.TrimSuffix(file.Name(), ".yaml"))
+		}
+	}
+
+	if len(templateFiles) == 0 {
+		fmt.Println("No template files found.")
+	} else {
+		fmt.Println("Available template files:")
+		for _, name := range templateFiles {
+			fmt.Println("-", name)
+		}
+	}
+
+	return nil
+}
+
+func createNote(cmd *cobra.Command, args []string) error {
+	if noteName == "" {
+		noteName = noteTitle
+	}
+
+	if err := validateFileName(noteName); err != nil {
+		return err
+	}
+	if err := validateTitle(noteTitle); err != nil {
+		return err
+	}
+
+	template, err := loadTemplate(templateName)
 	if err != nil {
 		return err
 	}
 
-	content := generateContent(template, title)
+	content := generateContent(template, noteTitle)
 
-	err = saveMarkdownFile(name, content)
+	err = saveMarkdownFile(noteName, content)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Markdown note '%s.md' created successfully.\n", name)
+	fmt.Printf("Markdown note '%s.md' created successfully.\n", noteName)
 	return nil
 }
 
 func loadTemplate(templateName string) (string, error) {
-	filename := filepath.Join("templates", sanitizeFileName(templateName)+".yaml")
+	if err := ensureTemplatesDirectory(); err != nil {
+		return "", err
+	}
+
+	filename := filepath.Join(AppConfig.TemplatesDir, sanitizeFileName(templateName)+".yaml")
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return "", &FileError{Op: "read", Path: filename, Err: err}
