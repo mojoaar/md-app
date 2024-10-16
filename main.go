@@ -18,7 +18,8 @@ const (
 )
 
 type Template struct {
-	Content string `yaml:"content"`
+	Content string   `yaml:"content"`
+	Tags    []string `yaml:"tags,omitempty"`
 }
 
 const defaultTemplateContent = `content: |
@@ -26,12 +27,15 @@ const defaultTemplateContent = `content: |
 
   Date: {{DATE}}
   Time: {{TIME}}
+  Tags: {{TAGS}}
 
   ## Introduction
 
   ## Main Content
 
   ## Conclusion
+
+tags:
 `
 
 // Custom error types
@@ -74,7 +78,13 @@ Usage Examples:
     md note -t "My Note Title"
 
   Create a new note with a custom name and template:
-    md note -t "My Note Title" -n my-custom-note -m my-template`, version, author),
+    md note -t "My Note Title" -n my-custom-note -m my-template
+
+  Create a new note with tags:
+    md note -t "My Note Title" -g tag1,tag2,tag3
+
+  List all notes with their tags:
+    md list`, version, author),
 }
 
 var templateCmd = &cobra.Command{
@@ -121,23 +131,35 @@ Usage Examples:
     md note -t "My Note Title"
 
   Create a note with a custom name and template:
-    md note -t "My Note Title" -n my-custom-note -m my-template`,
+    md note -t "My Note Title" -n my-custom-note -m my-template
+
+  Create a note with tags:
+    md note -t "My Note Title" -g tag1,tag2,tag3`,
 	RunE: createNote,
+}
+
+var listNotesCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all notes with their tags",
+	Long:  `List all markdown notes in the notes directory with their associated tags.`,
+	RunE:  listNotes,
 }
 
 var (
 	noteTitle    string
 	noteName     string
 	templateName string
+	noteTags     []string
 )
 
 func init() {
-	rootCmd.AddCommand(templateCmd, noteCmd)
+	rootCmd.AddCommand(templateCmd, noteCmd, listNotesCmd)
 	templateCmd.AddCommand(createTemplateCmd, listTemplatesCmd)
 
 	noteCmd.Flags().StringVarP(&noteTitle, "title", "t", "", "Title of the markdown document (required)")
 	noteCmd.Flags().StringVarP(&noteName, "name", "n", "", "Name of the markdown file (optional, defaults to title)")
 	noteCmd.Flags().StringVarP(&templateName, "template", "m", "default", "Name of the template to use")
+	noteCmd.Flags().StringSliceVarP(&noteTags, "tags", "g", []string{}, "Tags for the note (comma-separated)")
 	noteCmd.MarkFlagRequired("title")
 }
 
@@ -257,42 +279,50 @@ func createNote(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	content := generateContent(template, noteTitle)
+	content := generateContent(template, noteTitle, noteTags)
 
 	err = saveMarkdownFile(noteName, content)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Markdown note '%s.md' created successfully.\n", noteName)
+	if len(noteTags) > 0 {
+		fmt.Printf("Markdown note '%s.md' created successfully with tags: %s\n", noteName, strings.Join(noteTags, ", "))
+	} else {
+		fmt.Printf("Markdown note '%s.md' created successfully\n", noteName)
+	}
 	return nil
 }
 
-func loadTemplate(templateName string) (string, error) {
+func loadTemplate(templateName string) (Template, error) {
 	if err := ensureTemplatesDirectory(); err != nil {
-		return "", err
+		return Template{}, err
 	}
 
 	filename := filepath.Join(AppConfig.TemplatesDir, sanitizeFileName(templateName)+".yaml")
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return "", &FileError{Op: "read", Path: filename, Err: err}
+		return Template{}, &FileError{Op: "read", Path: filename, Err: err}
 	}
 
 	var template Template
 	err = yaml.Unmarshal(data, &template)
 	if err != nil {
-		return "", &FileError{Op: "parse", Path: filename, Err: err}
+		return Template{}, &FileError{Op: "parse", Path: filename, Err: err}
 	}
 
-	return template.Content, nil
+	return template, nil
 }
 
-func generateContent(template, title string) string {
+func generateContent(template Template, title string, tags []string) string {
 	now := time.Now()
-	content := strings.ReplaceAll(template, "{{TITLE}}", title)
+	content := strings.ReplaceAll(template.Content, "{{TITLE}}", title)
 	content = strings.ReplaceAll(content, "{{DATE}}", now.Format("2006-01-02"))
 	content = strings.ReplaceAll(content, "{{TIME}}", now.Format("15:04:05"))
+
+	tagsString := strings.Join(tags, ", ")
+	content = strings.ReplaceAll(content, "{{TAGS}}", tagsString)
+
 	return content
 }
 
@@ -351,4 +381,50 @@ func validateTitle(title string) error {
 		return &ValidationError{Field: "title", Msg: "cannot be only whitespace"}
 	}
 	return nil
+}
+
+func listNotes(cmd *cobra.Command, args []string) error {
+	if err := ensureNotesDirectory(); err != nil {
+		return err
+	}
+
+	notesDir := AppConfig.NotesDir
+	if notesDir == "" {
+		notesDir = "."
+	}
+
+	files, err := os.ReadDir(notesDir)
+	if err != nil {
+		return &FileError{Op: "read", Path: notesDir, Err: err}
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".md") {
+			content, err := os.ReadFile(filepath.Join(notesDir, file.Name()))
+			if err != nil {
+				fmt.Printf("Error reading %s: %v\n", file.Name(), err)
+				continue
+			}
+
+			tags := extractTags(string(content))
+			fmt.Printf("%s: %v\n", file.Name(), tags)
+		}
+	}
+
+	return nil
+}
+
+func extractTags(content string) []string {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "Tags:") {
+			tagsPart := strings.TrimPrefix(line, "Tags:")
+			tags := strings.Split(tagsPart, ",")
+			for i, tag := range tags {
+				tags[i] = strings.TrimSpace(tag)
+			}
+			return tags
+		}
+	}
+	return []string{}
 }
