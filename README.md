@@ -32,18 +32,27 @@ Usage Examples:
   Create a new note with a custom name and template:
     md note -t "My Note Title" -n my-custom-note -m my-template
 
+  Create a new note with tags:
+    md note -t "My Note Title" -g tag1,tag2,tag3
+
+  List all notes with their tags:
+    md list
+
 Usage:
   md [command]
 
 Available Commands:
   completion  Generate the autocompletion script for the specified shell
   help        Help about any command
+  list        List all notes with their tags
   note        Create a new note
   template    Manage templates
 
 Flags:
   -h, --help      help for md
   -v, --version   version for md
+
+Use "md [command] --help" for more information about a command.
 ```
 
 *Create a new template*
