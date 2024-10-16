@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ type Template struct {
 const defaultTemplateContent = `content: |
   # {{TITLE}}
 
-  Date: {{DATE}}  
+  Date: {{DATE}}
   Time: {{TIME}}
 
   ## Introduction
@@ -32,6 +33,26 @@ const defaultTemplateContent = `content: |
 
   ## Conclusion
 `
+
+// Custom error types
+type ValidationError struct {
+	Field string
+	Msg   string
+}
+
+func (e *ValidationError) Error() string {
+	return fmt.Sprintf("Validation error for %s: %s", e.Field, e.Msg)
+}
+
+type FileError struct {
+	Op   string
+	Path string
+	Err  error
+}
+
+func (e *FileError) Error() string {
+	return fmt.Sprintf("%s error for file %s: %v", e.Op, e.Path, e.Err)
+}
 
 func main() {
 	// Define command-line flags
@@ -84,17 +105,14 @@ func main() {
 	// Ensure templates directory exists and create default template if needed
 	err := ensureTemplatesDirectory()
 	if err != nil {
-		fmt.Printf("Error ensuring templates directory: %v\n", err)
-		os.Exit(1)
+		handleError(err)
 	}
 
 	if *operationType == "template" {
 		if *showTemplates {
 			err = showTemplateFiles()
 		} else if *name != "" {
-			// Convert spaces to dashes and make lowercase
-			templateName := strings.ToLower(strings.ReplaceAll(*name, " ", "-"))
-			err = createTemplate(templateName)
+			err = createTemplate(*name)
 		} else {
 			fmt.Println("Error: for template type, either -show or -name must be specified")
 			flag.Usage()
@@ -110,33 +128,40 @@ func main() {
 		if noteName == "" {
 			noteName = *title
 		}
-		noteName = strings.ToLower(strings.ReplaceAll(noteName, " ", "-"))
 		err = createNote(noteName, *title, *templateFile)
 	}
 
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		handleError(err)
 	}
+}
+
+func handleError(err error) {
+	switch e := err.(type) {
+	case *ValidationError:
+		fmt.Printf("Validation error: %v\n", e)
+	case *FileError:
+		fmt.Printf("File operation error: %v\n", e)
+	default:
+		fmt.Printf("An error occurred: %v\n", e)
+	}
+	os.Exit(1)
 }
 
 func ensureTemplatesDirectory() error {
 	templatesDir := "templates"
 
-	// Check if templates directory exists
 	if _, err := os.Stat(templatesDir); os.IsNotExist(err) {
-		// Create templates directory
 		err := os.Mkdir(templatesDir, 0755)
 		if err != nil {
-			return fmt.Errorf("failed to create templates directory: %v", err)
+			return &FileError{Op: "create", Path: templatesDir, Err: err}
 		}
 		fmt.Println("Created templates directory.")
 
-		// Create default.yaml file
 		defaultFilePath := filepath.Join(templatesDir, "default.yaml")
 		err = os.WriteFile(defaultFilePath, []byte(defaultTemplateContent), 0644)
 		if err != nil {
-			return fmt.Errorf("failed to create default template file: %v", err)
+			return &FileError{Op: "write", Path: defaultFilePath, Err: err}
 		}
 		fmt.Println("Created default template file.")
 	}
@@ -148,7 +173,7 @@ func showTemplateFiles() error {
 	templatesDir := "templates"
 	files, err := os.ReadDir(templatesDir)
 	if err != nil {
-		return fmt.Errorf("failed to read templates directory: %v", err)
+		return &FileError{Op: "read", Path: templatesDir, Err: err}
 	}
 
 	fmt.Println("Available template files:")
@@ -162,10 +187,14 @@ func showTemplateFiles() error {
 }
 
 func createTemplate(name string) error {
-	filename := filepath.Join("templates", name+".yaml")
+	if err := validateFileName(name); err != nil {
+		return err
+	}
+
+	filename := filepath.Join("templates", sanitizeFileName(name)+".yaml")
 	err := os.WriteFile(filename, []byte(defaultTemplateContent), 0644)
 	if err != nil {
-		return fmt.Errorf("failed to create template file: %v", err)
+		return &FileError{Op: "write", Path: filename, Err: err}
 	}
 
 	fmt.Printf("Template file '%s.yaml' created successfully.\n", name)
@@ -173,19 +202,23 @@ func createTemplate(name string) error {
 }
 
 func createNote(name, title, templateFile string) error {
-	// Load template
-	template, err := loadTemplate(templateFile)
-	if err != nil {
-		return fmt.Errorf("error loading template: %v", err)
+	if err := validateFileName(name); err != nil {
+		return err
+	}
+	if err := validateTitle(title); err != nil {
+		return err
 	}
 
-	// Generate content
+	template, err := loadTemplate(templateFile)
+	if err != nil {
+		return err
+	}
+
 	content := generateContent(template, title)
 
-	// Save markdown file
 	err = saveMarkdownFile(name, content)
 	if err != nil {
-		return fmt.Errorf("error saving markdown file: %v", err)
+		return err
 	}
 
 	fmt.Printf("Markdown note '%s.md' created successfully.\n", name)
@@ -193,16 +226,16 @@ func createNote(name, title, templateFile string) error {
 }
 
 func loadTemplate(templateName string) (string, error) {
-	filename := filepath.Join("templates", templateName+".yaml")
+	filename := filepath.Join("templates", sanitizeFileName(templateName)+".yaml")
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return "", err
+		return "", &FileError{Op: "read", Path: filename, Err: err}
 	}
 
 	var template Template
 	err = yaml.Unmarshal(data, &template)
 	if err != nil {
-		return "", err
+		return "", &FileError{Op: "parse", Path: filename, Err: err}
 	}
 
 	return template.Content, nil
@@ -217,6 +250,55 @@ func generateContent(template, title string) string {
 }
 
 func saveMarkdownFile(name, content string) error {
-	filename := name + ".md"
-	return os.WriteFile(filename, []byte(content), 0644)
+	filename := sanitizeFileName(name) + ".md"
+	err := os.WriteFile(filename, []byte(content), 0644)
+	if err != nil {
+		return &FileError{Op: "write", Path: filename, Err: err}
+	}
+	return nil
+}
+
+func sanitizeFileName(name string) string {
+	// Replace spaces with underscores
+	name = strings.ReplaceAll(name, " ", "_")
+
+	// Remove any character that is not alphanumeric, underscore, or hyphen
+	reg := regexp.MustCompile(`[^a-zA-Z0-9_-]`)
+	name = reg.ReplaceAllString(name, "")
+
+	// Convert to lowercase
+	name = strings.ToLower(name)
+
+	// Trim to a reasonable length (e.g., 255 characters)
+	if len(name) > 255 {
+		name = name[:255]
+	}
+
+	return name
+}
+
+func validateFileName(name string) error {
+	if name == "" {
+		return &ValidationError{Field: "file name", Msg: "cannot be empty"}
+	}
+	if len(name) > 255 {
+		return &ValidationError{Field: "file name", Msg: "too long (max 255 characters)"}
+	}
+	if strings.ContainsAny(name, "/\\:*?\"<>|") {
+		return &ValidationError{Field: "file name", Msg: "contains invalid characters"}
+	}
+	return nil
+}
+
+func validateTitle(title string) error {
+	if title == "" {
+		return &ValidationError{Field: "title", Msg: "cannot be empty"}
+	}
+	if len(title) > 100 {
+		return &ValidationError{Field: "title", Msg: "too long (max 100 characters)"}
+	}
+	if strings.TrimSpace(title) == "" {
+		return &ValidationError{Field: "title", Msg: "cannot be only whitespace"}
+	}
+	return nil
 }
